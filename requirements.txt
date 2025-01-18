@@ -3,3 +3,4 @@ uvicorn
 opencv-python
 python-multipart
 cryptography
+pytest
