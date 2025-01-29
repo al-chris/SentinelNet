@@ -48,7 +48,7 @@ class SecuritySystem:
         with open("devices.json", "w") as f:
             devices_data = []
             for device in self.devices.values():
-                device_dict = device.dict()
+                device_dict = device.model_dump()
                 device_dict["last_seen"] = device_dict["last_seen"].isoformat()
                 devices_data.append(device_dict)
             json.dump(devices_data, f, indent=2)
@@ -174,17 +174,26 @@ async def view_all_streams():
     return HTMLResponse(content=html)
 
 @app.get("/stream/{device_id}")
-async def stream_video(device_id: str):
+async def stream_video(device_id: str, limit: int = None):
     def generate():
-        while True:
+        frame_count = 0
+        while limit is None or frame_count < limit:
             frame_data = system.get_frame(device_id)
             if frame_data is None:
+                # If device doesn't exist or has no frames, yield a blank frame or stop streaming
                 blank = np.zeros((480, 640, 3), dtype=np.uint8)
                 _, buffer = cv2.imencode('.jpg', blank)
                 frame_data = buffer.tobytes()
 
+            # If device doesn't exist or no frames, yield a blank frame and break after one iteration
+            if device_id not in system.devices:
+                yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
+                break
+
             yield (b'--frame\r\n'
-                  b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+
+            frame_count += 1
 
     return StreamingResponse(
         generate(),

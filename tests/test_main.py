@@ -170,15 +170,22 @@ def test_stream_endpoint():
         headers={"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
     )
     
-    # Test stream endpoint
-    response = client.get("/stream/TEST_CAM_001")
+    # Test stream endpoint with a limit of 1 frame
+    response = client.get("/stream/TEST_CAM_001?limit=1")
     assert response.status_code == 200
     assert response.headers["content-type"] == "multipart/x-mixed-replace; boundary=frame"
     
-    # Read first frame from stream
-    content = next(response.iter_content(1024))
+    # Read all the content from the response
+    content = b""
+    for chunk in response.iter_bytes():
+        content += chunk
+    
+    # Check the first frame from stream
     assert content.startswith(b'--frame')
     assert b'Content-Type: image/jpeg' in content
+
+    # Close the response
+    response.close()
 
 def test_view_all_streams():
     # Register test devices
