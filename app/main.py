@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
 import cv2
 import numpy as np
 import threading
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pydantic import BaseModel
 import os
@@ -27,12 +27,17 @@ class SecuritySystem:
     def __init__(self):
         self.frames: Dict[str, bytes] = {}
         self.devices: Dict[str, Device] = {}
+        self.recording_states: Dict[str, Dict] = {}
         self.lock = threading.Lock()
         self.load_devices()
         
         # Ensure recording directory exists
         self.recordings_dir = Path("recordings")
         self.recordings_dir.mkdir(exist_ok=True)
+
+        # Initialize HOG descriptor/person detector
+        self.hog = cv2.HOGDescriptor()
+        self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
     def load_devices(self):
         try:
@@ -62,12 +67,30 @@ class SecuritySystem:
                 self.save_frames(device_id, frame_data)
 
     def save_frames(self, device_id: str, frame_data: bytes):
-        # Save frame periodically (e.g., every minute)
+        # Convert bytes to image
+        np_arr = np.frombuffer(frame_data, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        # Detect people in the frame
+        rects, _ = self.hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
+        
         now = datetime.now()
-        if now.second == 0:  # Save once per minute
+        if device_id not in self.recording_states:
+            self.recording_states[device_id] = {
+                "recording": False,
+                "last_detection_time": datetime.min
+            }
+        
+        if len(rects) > 0:
+            self.recording_states[device_id]["recording"] = True
+            self.recording_states[device_id]["last_detection_time"] = now
+        elif self.recording_states[device_id]["recording"] and now - self.recording_states[device_id]["last_detection_time"] > timedelta(seconds=5):
+            self.recording_states[device_id]["recording"] = False
+        
+        # Save frame if recording
+        if self.recording_states[device_id]["recording"]:
             device_dir = self.recordings_dir / device_id / now.strftime("%Y-%m-%d")
             device_dir.mkdir(parents=True, exist_ok=True)
-            
             filename = now.strftime("%H-%M-%S.jpg")
             with open(device_dir / filename, "wb") as f:
                 f.write(frame_data)
@@ -107,12 +130,25 @@ async def home():
 
 @app.post("/register_device")
 async def register_device(request: Request):
-    data = await request.json()
+    try:
+        # Check if the request has a body
+        body = await request.body()
+        if not body:
+            raise HTTPException(status_code=400, detail="Request body cannot be empty")
+
+        # Attempt to parse the JSON body
+        data = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # Extract device_id and device_type from the parsed JSON
     device_id = data.get("device_id")
     device_type = data.get("type")
+    
     if device_id and device_type:
         system.register_device(device_id, device_type)
         return {"status": "registered", "device_id": device_id}
+    
     return {"status": "error", "message": "Invalid registration data"}
 
 @app.post("/device/{device_id}/alias")
