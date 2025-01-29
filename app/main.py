@@ -99,6 +99,12 @@ class SecuritySystem:
 
 system = SecuritySystem()
 
+
+@app.get("/")
+async def home():
+    return {"detail": "Hello and Welcome"}
+
+
 @app.post("/register_device")
 async def register_device(request: Request):
     data = await request.json()
