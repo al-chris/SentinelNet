@@ -17,7 +17,8 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 #define MYGW 192, 168, 1, 100   // Server IP
 
 // Server settings
-IPAddress server(192, 168, 1, 100);
+// IPAddress server(192, 168, 1, 100);
+char server[] = "192.168.1.100";
 const int serverPort = 80;
 
 // Device identification
@@ -34,36 +35,54 @@ String generateUniqueId() {
   return String(id);
 }
 
-void loadOrGenerateDeviceId() {
-  EEPROM.begin(EEPROM_SIZE);
+String generateRandomId() {
+    const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";  // Characters for ID
+    char randomId[13];  // 12 characters + null terminator
 
-  // Try to read existing ID
-  String savedId = "";
-  for (int i = 0; i < 12; i++) {
-    char c = EEPROM.read(ID_ADDRESS + i);
-    if (c == 0) break;
-    savedId += c;
-  }
+    // Seed the random number generator
+    randomSeed(analogRead(0));  // Use analog pin for random seed
 
-  if (savedId.length() == 0 || savedId == "CAM_00000000") {
-    // Generate and save new ID if none exists
-    deviceId = generateUniqueId();
-    for (unsigned int i = 0; i < deviceId.length(); i++) {
-      EEPROM.write(ID_ADDRESS + i, deviceId[i]);
+    for (int i = 0; i < 12; i++) {
+        randomId[i] = charset[random(0, sizeof(charset) - 1)];  // Pick random char from charset
     }
-    EEPROM.write(ID_ADDRESS + deviceId.length(), 0);
-    EEPROM.commit();
-  } else {
-    deviceId = savedId;
-  }
+    randomId[12] = '\0';  // Null-terminate the string
 
-  Serial.print("Device ID: ");
-  Serial.println(deviceId);
+    return String(randomId);
 }
+
+void loadOrGenerateDeviceId() {
+    EEPROM.begin(EEPROM_SIZE);
+    
+    // Read the existing device ID from EEPROM
+    String savedId = "";
+    for (int i = 0; i < 12; i++) {
+        char c = EEPROM.read(ID_ADDRESS + i);
+        if (c == 0) break;  // Stop if null-terminator is found
+        savedId += c;
+    }
+
+    if (savedId.length() == 0 || savedId == "CAM_00000000") {
+        // If no ID exists or it's the default one, generate a new random ID
+        deviceId = generateRandomId();
+        
+        // Store the new ID in EEPROM
+        for (unsigned int i = 0; i < deviceId.length(); i++) {
+            EEPROM.write(ID_ADDRESS + i, deviceId[i]);
+        }
+        EEPROM.write(ID_ADDRESS + deviceId.length(), 0);  // Null-terminate the string
+        EEPROM.commit();
+    } else {
+        deviceId = savedId;
+    }
+
+    Serial.print("Loaded Device ID: ");
+    Serial.println(deviceId);
+}
+
 
 void setupCamera() {
   pinMode(4, OUTPUT);
-  digitalWrite(4, HIGH);
+  // digitalWrite(4, HIGH); // I'm turning this off for now
 
   auto resolution = esp32cam::Resolution::find(1024, 768);
   esp32cam::Config cfg;
@@ -121,11 +140,11 @@ void setupEthernet() {
     
     Serial.println("Starting Ethernet connection...");
     Ethernet.begin(mac, ip, dns, gw, subnet);
-    delay(2000);
+    delay(5000);
 
     if (Ethernet.hardwareStatus() == EthernetNoHardware) {
         Serial.println("ERROR: Ethernet hardware not found!");
-        while (1) delay(100);
+        while (1) delay(1000);
     } else if (Ethernet.hardwareStatus() == EthernetENC28J60) {
         Serial.println("ENC28J60 hardware found");
     }
@@ -166,11 +185,13 @@ void sendMJPEGStream() {
 
     Serial.println("Connected! Sending HTTP headers...");
 
-    // Send HTTP headers with debug output
+    // Send HTTP headers with debug output - BOUNDARY DECLARATION IN HEADER
     String request = "POST /upload/" + deviceId + " HTTP/1.1\r\n";
-    request += "Host: 192.168.1.100\r\n";
+    request += "Host: " + String(server) + "\r\n";
     request += "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n";
-    request += "Connection: keep-alive\r\n\r\n";
+    request += "Connection: keep-alive\r\n";
+    request += "Cache-Control: no-cache\r\n";
+    request += "\r\n"; // Empty line to indicate end of headers
 
     Serial.println("Sending request:");
     Serial.println(request);
@@ -180,13 +201,22 @@ void sendMJPEGStream() {
 
   auto frame = esp32cam::Camera.capture();
   if (frame && frame->size() > 0) {
-    client.println("--frame");
-    client.println("Content-Type: image/jpeg");
+    // Send the boundary with proper format
+    client.print("--frame\r\n");
+    client.print("Content-Type: image/jpeg\r\n");
     client.print("Content-Length: ");
-    client.println(frame->size());
-    client.println();
+    client.print(frame->size());
+    client.print("\r\n\r\n");
+    
+    // Send the binary JPEG data
     client.write(frame->data(), frame->size());
-    client.println();
+    
+    // End with a newline (important for multipart parsing)
+    client.print("\r\n");
+    
+    Serial.printf("Frame sent: %d bytes\n", frame->size());
+  } else {
+    Serial.println("Failed to capture frame");
   }
 }
 
@@ -195,7 +225,11 @@ void setup() {
   while (!Serial) delay(100);
   Serial.println("\nESP32-CAM Security System Node");
 
-  loadOrGenerateDeviceId();
+  delay(2000);
+
+  // loadOrGenerateDeviceId();
+  
+  
   setupCamera();
   setupEthernet();
 
@@ -209,14 +243,19 @@ void setup() {
   // IPAddress subnet(MYIPMASK);
   // Ethernet.begin(mac, ip, dns, gw, subnet);
 
-  delay(2000);
+  delay(5000);
+
+  deviceId = generateRandomId();
+  Serial.print("Loaded Device ID: ");
+  Serial.println(deviceId);
+
   registerDevice();
 }
 
 void loop() {
   if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println("Ethernet cable disconnected");
-    delay(1000);
+    Serial.println("Ethernet cable disconnected. Waiting...");
+    delay(2000);
     return;
   }
 
