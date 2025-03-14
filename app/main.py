@@ -125,20 +125,97 @@ async def update_device_alias(device_id: str, update: DeviceUpdate):
 async def list_devices():
     return {"devices": list(system.devices.values())}
 
+# @app.post("/upload/{device_id}")
+# async def upload_stream(device_id: str, request: Request):
+#     async for chunk in request.stream():
+#         if chunk.startswith(b"--frame"):
+#             try:
+#                 jpeg_start = chunk.find(b'\xff\xd8')
+#                 jpeg_end = chunk.find(b'\xff\xd9')
+#                 if jpeg_start != -1 and jpeg_end != -1:
+#                     jpeg_data = chunk[jpeg_start:jpeg_end+2]
+#                     system.update_frame(device_id, jpeg_data)
+#             except Exception as e:
+#                 print(f"Error processing frame: {e}")
+#                 continue
+#     return {"message": "Stream ended"}
+
 @app.post("/upload/{device_id}")
 async def upload_stream(device_id: str, request: Request):
-    async for chunk in request.stream():
-        if chunk.startswith(b"--frame"):
-            try:
-                jpeg_start = chunk.find(b'\xff\xd8')
-                jpeg_end = chunk.find(b'\xff\xd9')
-                if jpeg_start != -1 and jpeg_end != -1:
-                    jpeg_data = chunk[jpeg_start:jpeg_end+2]
+    # Create a buffer to accumulate data
+    buffer = b""
+    boundary = b"--frame"
+    
+    # Register the device if it doesn't exist
+    if device_id not in system.devices:
+        system.register_device(device_id)  # Assuming you have this method
+    
+    try:
+        async for chunk in request.stream():
+            buffer += chunk
+            
+            # Look for complete frames
+            while True:
+                # Find the boundary
+                start_pos = buffer.find(boundary)
+                if start_pos == -1:
+                    break
+                
+                # Find the end of headers (double CRLF)
+                headers_end = buffer.find(b"\r\n\r\n", start_pos)
+                if headers_end == -1:
+                    break
+                
+                # Extract content length if present
+                content_length = None
+                header_text = buffer[start_pos:headers_end].decode('utf-8', errors='ignore')
+                for line in header_text.split('\r\n'):
+                    if line.lower().startswith('content-length:'):
+                        try:
+                            content_length = int(line.split(':', 1)[1].strip())
+                        except ValueError:
+                            pass
+                
+                # If we couldn't find content length, try to find next boundary
+                if content_length is None:
+                    next_boundary = buffer.find(boundary, start_pos + len(boundary))
+                    if next_boundary == -1:
+                        break  # Not enough data yet
+                    
+                    # Extract the frame data
+                    data_start = headers_end + 4  # +4 for \r\n\r\n
+                    frame_data = buffer[data_start:next_boundary]
+                    
+                    # Update buffer to remove processed data
+                    buffer = buffer[next_boundary:]
+                else:
+                    # We have content length, extract frame precisely
+                    data_start = headers_end + 4  # +4 for \r\n\r\n
+                    data_end = data_start + content_length
+                    
+                    # Check if we have enough data
+                    if len(buffer) < data_end:
+                        break  # Not enough data yet
+                    
+                    frame_data = buffer[data_start:data_end]
+                    
+                    # Update buffer to remove processed data
+                    buffer = buffer[data_end:]
+                
+                # Process the frame data - look for JPEG markers
+                jpeg_start = frame_data.find(b'\xff\xd8')
+                jpeg_end = frame_data.rfind(b'\xff\xd9')
+                
+                if jpeg_start != -1 and jpeg_end != -1 and jpeg_end > jpeg_start:
+                    jpeg_data = frame_data[jpeg_start:jpeg_end+2]
                     system.update_frame(device_id, jpeg_data)
-            except Exception as e:
-                print(f"Error processing frame: {e}")
-                continue
-    return {"message": "Stream ended"}
+                    print(f"Processed frame: {len(jpeg_data)} bytes")
+    
+    except Exception as e:
+        print(f"Error in upload stream: {e}")
+        return {"status": "error", "message": str(e)}
+    
+    return {"status": "success", "message": "Stream ended"}
 
 @app.get("/view")
 async def view_all_streams():

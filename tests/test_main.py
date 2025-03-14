@@ -128,10 +128,18 @@ def test_upload_stream(sample_video):
     }
     client.post("/register_device", json=test_device)
     
+    # First send the initial POST request with headers
+    headers = {
+        "Content-Type": "multipart/x-mixed-replace; boundary=frame",
+        "Host": "localhost",
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache"
+    }
+    
     # Create a video capture object
     cap = cv2.VideoCapture(sample_video)
     
-    # Read and upload frames
+    # Use a streaming approach to mimic ESP32-CAM behavior
     frame_count = 0
     while cap.isOpened() and frame_count < 5:  # Test with first 5 frames
         ret, frame = cap.read()
@@ -140,13 +148,17 @@ def test_upload_stream(sample_video):
             
         # Encode frame to JPEG
         _, buffer = cv2.imencode('.jpg', frame)
-        frame_data = b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n'
+        jpeg_data = buffer.tobytes()
+        
+        # Format frame as in ESP32-CAM code
+        frame_data = f"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {len(jpeg_data)}\r\n\r\n".encode()
+        frame_data += jpeg_data + b"\r\n"
         
         # Upload frame
         response = client.post(
             f"/upload/TEST_CAM_001",
             content=frame_data,
-            headers={"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
+            headers=headers
         )
         
         assert response.status_code == 200
