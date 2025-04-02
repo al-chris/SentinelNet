@@ -1,14 +1,26 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 import threading
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pydantic import BaseModel
 import os
 from pathlib import Path
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("security_system.log"),
+        logging.StreamHandler()
+    ]
+)
 
 class Device(BaseModel):
     device_id: str
@@ -22,6 +34,14 @@ class DeviceUpdate(BaseModel):
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For development. In production, specify your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Store frames and device info with thread-safe access
 class SecuritySystem:
     def __init__(self):
@@ -33,6 +53,8 @@ class SecuritySystem:
         # Ensure recording directory exists
         self.recordings_dir = Path("recordings")
         self.recordings_dir.mkdir(exist_ok=True)
+        self.video_writers = {}
+        self.last_video_time = {}
 
     def load_devices(self):
         try:
@@ -54,23 +76,77 @@ class SecuritySystem:
             json.dump(devices_data, f, indent=2)
 
     def update_frame(self, device_id: str, frame_data: bytes):
+        print("update_frame() called")
         with self.lock:
+            logging.info(f"Updating frame for device {device_id}") 
             self.frames[device_id] = frame_data
             if device_id in self.devices:
+                logging.info(f"Device {device_id} exists, updating last seen time")
                 self.devices[device_id].last_seen = datetime.now()
                 self.devices[device_id].status = "online"
                 self.save_frames(device_id, frame_data)
 
     def save_frames(self, device_id: str, frame_data: bytes):
-        # Save frame periodically (e.g., every minute)
         now = datetime.now()
-        if now.second == 0:  # Save once per minute
+        
+        # Convert frame_data to numpy array for OpenCV
+        try:
+            nparr = np.frombuffer(frame_data, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            logging.info(f"Save_frames has been called")
+            logging.info(frame)
+            
+            # Create device directory
             device_dir = self.recordings_dir / device_id / now.strftime("%Y-%m-%d")
             device_dir.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Device directory created: {device_dir}")
             
-            filename = now.strftime("%H-%M-%S.jpg")
-            with open(device_dir / filename, "wb") as f:
-                f.write(frame_data)
+            # Check if we need to create a new video file (every 5 minutes)
+            current_video_time = now.replace(second=0, microsecond=0)
+            current_video_time = current_video_time.replace(minute=(current_video_time.minute // 5) * 5)
+            logging.info(f"Current video time: {current_video_time}")
+            
+            if device_id not in self.last_video_time or self.last_video_time[device_id] != current_video_time:
+                # Close previous video writer if exists
+                if device_id in self.video_writers and self.video_writers[device_id]:
+                    self.video_writers[device_id].release()
+                
+                # Create new video file
+                video_filename = f"{current_video_time.strftime('%H-%M')}_to_{(current_video_time + timedelta(minutes=5)).strftime('%H-%M')}.mp4"
+                video_path = str(device_dir / video_filename)
+                
+                # Get frame dimensions
+                height, width = frame.shape[:2]
+                
+                # Create video writer
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                self.video_writers[device_id] = cv2.VideoWriter(
+                    video_path, fourcc, 5.0, (width, height)
+                )
+                
+                self.last_video_time[device_id] = current_video_time
+                logging.info(f"Created new video file: {video_path}")
+            
+            # Write frame to video
+            if device_id in self.video_writers and self.video_writers[device_id]:
+                self.video_writers[device_id].write(frame)
+                
+            # Also save individual frames occasionally (e.g., every 60 frames)
+            if not hasattr(self, 'frame_counters'):
+                self.frame_counters = {}
+            
+            if device_id not in self.frame_counters:
+                self.frame_counters[device_id] = 0
+            
+            self.frame_counters[device_id] += 1
+            
+            if self.frame_counters[device_id] % 60 == 0:
+                jpg_filename = now.strftime("%H-%M-%S") + ".jpg"
+                jpg_path = device_dir / jpg_filename
+                cv2.imwrite(str(jpg_path), frame)
+                
+        except Exception as e:
+            logging.info(f"Error saving video frame: {str(e)}")
 
     def get_frame(self, device_id: str) -> Optional[bytes]:
         with self.lock:
@@ -125,98 +201,166 @@ async def update_device_alias(device_id: str, update: DeviceUpdate):
 async def list_devices():
     return {"devices": list(system.devices.values())}
 
-# @app.post("/upload/{device_id}")
-# async def upload_stream(device_id: str, request: Request):
-#     async for chunk in request.stream():
-#         if chunk.startswith(b"--frame"):
-#             try:
-#                 jpeg_start = chunk.find(b'\xff\xd8')
-#                 jpeg_end = chunk.find(b'\xff\xd9')
-#                 if jpeg_start != -1 and jpeg_end != -1:
-#                     jpeg_data = chunk[jpeg_start:jpeg_end+2]
-#                     system.update_frame(device_id, jpeg_data)
-#             except Exception as e:
-#                 print(f"Error processing frame: {e}")
-#                 continue
-#     return {"message": "Stream ended"}
-
 @app.post("/upload/{device_id}")
 async def upload_stream(device_id: str, request: Request):
-    # Create a buffer to accumulate data
-    buffer = b""
-    boundary = b"--frame"
+    """
+    Endpoint to receive camera frames from devices.
+    Supports both raw JPEG uploads and multipart/form-data uploads.
+    
+    Args:
+        device_id: The unique identifier for the camera device
+        request: The incoming HTTP request containing image data
+    
+    Returns:
+        JSON response indicating success or failure
+    """
+    current_time = datetime.now()
     
     # Register the device if it doesn't exist
     if device_id not in system.devices:
-        system.register_device(device_id)  # Assuming you have this method
+        system.register_device(device_id, "ESP32-CAM")
+        logging.info(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] New device registered: {device_id}")
+    else:
+        logging.info(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Received upload from: {device_id}")
+    
+    # Get the content-type header
+    content_type = request.headers.get("content-type", "").lower()
     
     try:
-        async for chunk in request.stream():
-            buffer += chunk
-            
-            # Look for complete frames
-            while True:
-                # Find the boundary
-                start_pos = buffer.find(boundary)
-                if start_pos == -1:
-                    break
+        # Option 1: Handle raw JPEG uploads (from ESP32-CAM)
+        if "image/jpeg" in content_type:
+            try:
+                # Get the raw request body
+                raw_data = await request.body()
                 
-                # Find the end of headers (double CRLF)
-                headers_end = buffer.find(b"\r\n\r\n", start_pos)
-                if headers_end == -1:
-                    break
+                # Basic validation for JPEG format
+                if len(raw_data) < 2:
+                    return {"status": "error", "message": "Empty or invalid image data"}
                 
-                # Extract content length if present
-                content_length = None
-                header_text = buffer[start_pos:headers_end].decode('utf-8', errors='ignore')
-                for line in header_text.split('\r\n'):
-                    if line.lower().startswith('content-length:'):
-                        try:
-                            content_length = int(line.split(':', 1)[1].strip())
-                        except ValueError:
-                            pass
-                
-                # If we couldn't find content length, try to find next boundary
-                if content_length is None:
-                    next_boundary = buffer.find(boundary, start_pos + len(boundary))
-                    if next_boundary == -1:
-                        break  # Not enough data yet
+                if raw_data.startswith(b'\xff\xd8') and b'\xff\xd9' in raw_data:
+                    # Valid JPEG data - update the frame
+                    system.update_frame(device_id, raw_data)
                     
-                    # Extract the frame data
-                    data_start = headers_end + 4  # +4 for \r\n\r\n
-                    frame_data = buffer[data_start:next_boundary]
-                    
-                    # Update buffer to remove processed data
-                    buffer = buffer[next_boundary:]
+                    return {
+                        "status": "success", 
+                        "message": f"JPEG frame received ({len(raw_data)} bytes)",
+                        "timestamp": current_time.isoformat()
+                    }
                 else:
-                    # We have content length, extract frame precisely
-                    data_start = headers_end + 4  # +4 for \r\n\r\n
-                    data_end = data_start + content_length
+                    return {
+                        "status": "error", 
+                        "message": "Invalid JPEG data (missing JPEG markers)"
+                    }
+            
+            except Exception as e:
+                print(f"Error processing raw JPEG: {str(e)}")
+                return {"status": "error", "message": f"Raw JPEG processing error: {str(e)}"}
+        
+        # Option 2: Handle multipart/form-data uploads (from browsers or other clients)
+        elif "multipart/form-data" in content_type:
+            # Create a buffer to accumulate data
+            buffer = b""
+            boundary = None
+            
+            # Extract the boundary from content-type header
+            for part in content_type.split(';'):
+                part = part.strip()
+                if part.startswith('boundary='):
+                    boundary = part[9:].strip('"').encode()
+                    boundary = b"--" + boundary
+                    break
+            
+            if not boundary:
+                return {
+                    "status": "error", 
+                    "message": "Missing boundary in multipart/form-data"
+                }
+            
+            try:
+                # Process the incoming multipart stream
+                async for chunk in request.stream():
+                    buffer += chunk
                     
-                    # Check if we have enough data
-                    if len(buffer) < data_end:
-                        break  # Not enough data yet
-                    
-                    frame_data = buffer[data_start:data_end]
-                    
-                    # Update buffer to remove processed data
-                    buffer = buffer[data_end:]
+                    # Look for complete frames
+                    while True:
+                        # Find the boundary
+                        start_pos = buffer.find(boundary)
+                        if start_pos == -1:
+                            break
+                        
+                        # Find the end of headers (double CRLF)
+                        headers_end = buffer.find(b"\r\n\r\n", start_pos)
+                        if headers_end == -1:
+                            break
+                        
+                        # Extract content length if present
+                        content_length = None
+                        header_text = buffer[start_pos:headers_end].decode('utf-8', errors='ignore')
+                        for line in header_text.split('\r\n'):
+                            if line.lower().startswith('content-length:'):
+                                try:
+                                    content_length = int(line.split(':', 1)[1].strip())
+                                except ValueError:
+                                    pass
+                        
+                        # If we couldn't find content length, try to find next boundary
+                        if content_length is None:
+                            next_boundary = buffer.find(boundary, start_pos + len(boundary))
+                            if next_boundary == -1:
+                                break  # Not enough data yet
+                            
+                            # Extract the frame data
+                            data_start = headers_end + 4  # +4 for \r\n\r\n
+                            frame_data = buffer[data_start:next_boundary]
+                            
+                            # Update buffer to remove processed data
+                            buffer = buffer[next_boundary:]
+                        else:
+                            # We have content length, extract frame precisely
+                            data_start = headers_end + 4  # +4 for \r\n\r\n
+                            data_end = data_start + content_length
+                            
+                            # Check if we have enough data
+                            if len(buffer) < data_end:
+                                break  # Not enough data yet
+                            
+                            frame_data = buffer[data_start:data_end]
+                            
+                            # Update buffer to remove processed data
+                            buffer = buffer[data_end:]
+                        
+                        # Process the frame data - look for JPEG markers
+                        jpeg_start = frame_data.find(b'\xff\xd8')
+                        jpeg_end = frame_data.rfind(b'\xff\xd9')
+                        
+                        if jpeg_start != -1 and jpeg_end != -1 and jpeg_end > jpeg_start:
+                            jpeg_data = frame_data[jpeg_start:jpeg_end+2]
+                            system.update_frame(device_id, jpeg_data)
+                            logging.info(f"Processed multipart frame: {len(jpeg_data)} bytes")
                 
-                # Process the frame data - look for JPEG markers
-                jpeg_start = frame_data.find(b'\xff\xd8')
-                jpeg_end = frame_data.rfind(b'\xff\xd9')
+                return {
+                    "status": "success", 
+                    "message": "Multipart stream processed",
+                    "timestamp": current_time.isoformat()
+                }
                 
-                if jpeg_start != -1 and jpeg_end != -1 and jpeg_end > jpeg_start:
-                    jpeg_data = frame_data[jpeg_start:jpeg_end+2]
-                    system.update_frame(device_id, jpeg_data)
-                    print(f"Processed frame: {len(jpeg_data)} bytes")
+            except Exception as e:
+                print(f"Error processing multipart data: {str(e)}")
+                return {"status": "error", "message": f"Multipart processing error: {str(e)}"}
+        
+        # Unsupported content type
+        else:
+            return {
+                "status": "error", 
+                "message": f"Unsupported content-type: {content_type}. Expected 'image/jpeg' or 'multipart/form-data'"
+            }
     
     except Exception as e:
-        print(f"Error in upload stream: {e}")
-        return {"status": "error", "message": str(e)}
+        print(f"Unhandled error in upload_stream: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"Server error: {str(e)}"}
     
-    return {"status": "success", "message": "Stream ended"}
-
 @app.get("/view")
 async def view_all_streams():
     """Returns HTML page with all camera streams"""
