@@ -76,9 +76,14 @@ class SecuritySystem:
             json.dump(devices_data, f, indent=2)
 
     def update_frame(self, device_id: str, frame_data: bytes):
-        print("update_frame() called")
         with self.lock:
-            logging.info(f"Updating frame for device {device_id}") 
+            logging.info(f"Updating frame for device {device_id}")
+            
+            # Only store the frame if it's valid JPEG data
+            if not frame_data.startswith(b'\xff\xd8') or not frame_data.endswith(b'\xff\xd9'):
+                logging.warning(f"Received invalid JPEG frame from {device_id} - not updating")
+                return
+            
             self.frames[device_id] = frame_data
             if device_id in self.devices:
                 logging.info(f"Device {device_id} exists, updating last seen time")
@@ -87,24 +92,33 @@ class SecuritySystem:
                 self.save_frames(device_id, frame_data)
 
     def save_frames(self, device_id: str, frame_data: bytes):
+        """Save video frames with robust error handling to prevent corruption."""
         now = datetime.now()
         
-        # Convert frame_data to numpy array for OpenCV
+        # First, validate that this is a complete and valid JPEG image
+        if not frame_data.startswith(b'\xff\xd8') or not frame_data.endswith(b'\xff\xd9'):
+            logging.warning(f"Skipping invalid JPEG frame from {device_id} - missing proper JPEG markers")
+            return
+        
         try:
+            # Convert frame_data to numpy array for OpenCV
             nparr = np.frombuffer(frame_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            logging.info(f"Save_frames has been called")
-            logging.info(frame)
+            
+            # Check if frame was successfully decoded
+            if frame is None or frame.size == 0:
+                logging.warning(f"Failed to decode frame from {device_id} - skipping")
+                return
+                
+            logging.info(f"Processing valid frame from {device_id}")
             
             # Create device directory
             device_dir = self.recordings_dir / device_id / now.strftime("%Y-%m-%d")
             device_dir.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Device directory created: {device_dir}")
             
             # Check if we need to create a new video file (every 5 minutes)
             current_video_time = now.replace(second=0, microsecond=0)
             current_video_time = current_video_time.replace(minute=(current_video_time.minute // 5) * 5)
-            logging.info(f"Current video time: {current_video_time}")
             
             if device_id not in self.last_video_time or self.last_video_time[device_id] != current_video_time:
                 # Close previous video writer if exists
@@ -129,7 +143,23 @@ class SecuritySystem:
             
             # Write frame to video
             if device_id in self.video_writers and self.video_writers[device_id]:
-                self.video_writers[device_id].write(frame)
+                if self.video_writers[device_id].isOpened():
+                    self.video_writers[device_id].write(frame)
+                else:
+                    logging.warning(f"Video writer for {device_id} is not open - recreating")
+                    # Get frame dimensions
+                    height, width = frame.shape[:2]
+                    
+                    # Create video writer
+                    video_filename = f"{current_video_time.strftime('%H-%M')}_to_{(current_video_time + timedelta(minutes=5)).strftime('%H-%M')}.mp4"
+                    video_path = str(device_dir / video_filename)
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    self.video_writers[device_id] = cv2.VideoWriter(
+                        video_path, fourcc, 5.0, (width, height)
+                    )
+                    
+                    if self.video_writers[device_id].isOpened():
+                        self.video_writers[device_id].write(frame)
                 
             # Also save individual frames occasionally (e.g., every 60 frames)
             if not hasattr(self, 'frame_counters'):
@@ -146,7 +176,8 @@ class SecuritySystem:
                 cv2.imwrite(str(jpg_path), frame)
                 
         except Exception as e:
-            logging.info(f"Error saving video frame: {str(e)}")
+            logging.error(f"Error saving video frame: {str(e)}")
+            # Do not re-raise the exception - just log and continue
 
     def get_frame(self, device_id: str) -> Optional[bytes]:
         with self.lock:
@@ -237,15 +268,32 @@ async def upload_stream(device_id: str, request: Request):
                 if len(raw_data) < 2:
                     return {"status": "error", "message": "Empty or invalid image data"}
                 
-                if raw_data.startswith(b'\xff\xd8') and b'\xff\xd9' in raw_data:
-                    # Valid JPEG data - update the frame
-                    system.update_frame(device_id, raw_data)
-                    
-                    return {
-                        "status": "success", 
-                        "message": f"JPEG frame received ({len(raw_data)} bytes)",
-                        "timestamp": current_time.isoformat()
-                    }
+                # More thorough JPEG validation
+                if raw_data.startswith(b'\xff\xd8') and raw_data.endswith(b'\xff\xd9'):
+                    # Additional validation - try to decode with OpenCV
+                    try:
+                        nparr = np.frombuffer(raw_data, np.uint8)
+                        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        if frame is None or frame.size == 0:
+                            return {
+                                "status": "error", 
+                                "message": "Unable to decode JPEG data - image may be corrupt"
+                            }
+                        
+                        # Valid JPEG data - update the frame
+                        system.update_frame(device_id, raw_data)
+                        
+                        return {
+                            "status": "success", 
+                            "message": f"JPEG frame received ({len(raw_data)} bytes)",
+                            "timestamp": current_time.isoformat()
+                        }
+                    except Exception as decode_error:
+                        logging.error(f"Error decoding JPEG: {str(decode_error)}")
+                        return {
+                            "status": "error", 
+                            "message": f"JPEG decoding error: {str(decode_error)}"
+                        }
                 else:
                     return {
                         "status": "error", 
@@ -253,7 +301,7 @@ async def upload_stream(device_id: str, request: Request):
                     }
             
             except Exception as e:
-                print(f"Error processing raw JPEG: {str(e)}")
+                logging.error(f"Error processing raw JPEG: {str(e)}")
                 return {"status": "error", "message": f"Raw JPEG processing error: {str(e)}"}
         
         # Option 2: Handle multipart/form-data uploads (from browsers or other clients)
@@ -335,8 +383,18 @@ async def upload_stream(device_id: str, request: Request):
                         
                         if jpeg_start != -1 and jpeg_end != -1 and jpeg_end > jpeg_start:
                             jpeg_data = frame_data[jpeg_start:jpeg_end+2]
-                            system.update_frame(device_id, jpeg_data)
-                            logging.info(f"Processed multipart frame: {len(jpeg_data)} bytes")
+                            
+                            # Additional validation - try to decode with OpenCV
+                            try:
+                                nparr = np.frombuffer(jpeg_data, np.uint8)
+                                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                                if frame is not None and frame.size > 0:
+                                    system.update_frame(device_id, jpeg_data)
+                                    logging.info(f"Processed multipart frame: {len(jpeg_data)} bytes")
+                                else:
+                                    logging.warning(f"Discarded corrupted multipart frame")
+                            except Exception as decode_error:
+                                logging.error(f"Error decoding multipart JPEG: {str(decode_error)}")
                 
                 return {
                     "status": "success", 
@@ -345,7 +403,7 @@ async def upload_stream(device_id: str, request: Request):
                 }
                 
             except Exception as e:
-                print(f"Error processing multipart data: {str(e)}")
+                logging.error(f"Error processing multipart data: {str(e)}")
                 return {"status": "error", "message": f"Multipart processing error: {str(e)}"}
         
         # Unsupported content type
@@ -356,7 +414,7 @@ async def upload_stream(device_id: str, request: Request):
             }
     
     except Exception as e:
-        print(f"Unhandled error in upload_stream: {str(e)}")
+        logging.error(f"Unhandled error in upload_stream: {str(e)}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Server error: {str(e)}"}
