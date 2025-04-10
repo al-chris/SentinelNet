@@ -384,5 +384,5 @@ void loop() {
     }
     
     // Main loop delay - keep this relatively long to avoid overwhelming the system
-    delay(200);
+    delay(120);
 }
