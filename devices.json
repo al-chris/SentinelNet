@@ -19,5 +19,12 @@
     "type": "camera",
     "last_seen": "2025-04-02T00:23:42.932219",
     "status": "online"
+  },
+  {
+    "device_id": "MAKZFSH79Y5V",
+    "alias": null,
+    "type": "ESP32-CAM",
+    "last_seen": "2025-04-09T23:45:46.064332",
+    "status": "online"
   }
 ]

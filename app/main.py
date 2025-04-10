@@ -32,7 +32,13 @@ class Device(BaseModel):
 class DeviceUpdate(BaseModel):
     alias: str
 
-app = FastAPI()
+app = FastAPI(
+    title="Security Camera API",
+    description="API for managing security cameras and accessing video streams",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,7 +141,7 @@ class SecuritySystem:
                 # Create video writer
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 self.video_writers[device_id] = cv2.VideoWriter(
-                    video_path, fourcc, 5.0, (width, height)
+                    video_path, fourcc, 15.0, (width, height)
                 )
                 
                 self.last_video_time[device_id] = current_video_time
