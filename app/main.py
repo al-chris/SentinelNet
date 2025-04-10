@@ -143,13 +143,17 @@ class SecuritySystem:
         if config is None:
             config = MotionConfig()
         
+        # Use absolute path to system_config.json
+        config_path = Path("system_config.json").absolute()
+        
         self.motion_detectors[device_id] = create_motion_detector(
             pixel_threshold=config.pixel_threshold,
             motion_threshold=config.motion_threshold,
             buffer_seconds=config.buffer_seconds,
             fps=config.fps,
             save_dir=str(device_motion_dir),
-            min_recording_time=config.min_recording_time
+            min_recording_time=config.min_recording_time,
+            config_path=str(config_path)
         )
         logging.info(f"Initialized motion detector for device {device_id}")
         
@@ -362,11 +366,20 @@ class SecuritySystem:
                     writer.release()
                     logging.info(f"Closed video writer for {device_id}")
             
-            # Stop all motion detector recordings
+            # Process any remaining frames in motion detectors
             for device_id, detector in self.motion_detectors.items():
-                if hasattr(detector, 'stop_recording'):
-                    detector.stop_recording()
-                    logging.info(f"Stopped motion recording for {device_id}")
+                # Force processing of any buffered frames
+                if hasattr(detector, '_process_current_segment'):
+                    try:
+                        detector._process_current_segment()
+                        logging.info(f"Processed remaining motion frames for {device_id}")
+                    except Exception as e:
+                        logging.error(f"Error processing final motion segment for {device_id}: {str(e)}")
+                
+                # Ensure the executor is shut down properly
+                if hasattr(detector, 'executor'):
+                    detector.executor.shutdown(wait=True)
+                    logging.info(f"Shut down motion detector executor for {device_id}")
 
 # Initialize the security system
 system = SecuritySystem()
