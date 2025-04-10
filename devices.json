@@ -4,27 +4,31 @@
     "alias": null,
     "type": "camera",
     "last_seen": "2025-04-01T23:54:25.134809",
-    "status": "online"
+    "status": "online",
+    "motion_detection": false
   },
   {
     "device_id": "device-m8z4fm0fxg3oeu",
     "alias": null,
     "type": "camera",
     "last_seen": "2025-04-02T00:20:49.358204",
-    "status": "online"
+    "status": "online",
+    "motion_detection": false
   },
   {
     "device_id": "device-m8z4jhqjx31cka",
     "alias": null,
     "type": "camera",
     "last_seen": "2025-04-02T00:23:42.932219",
-    "status": "online"
+    "status": "online",
+    "motion_detection": false
   },
   {
     "device_id": "MAKZFSH79Y5V",
     "alias": null,
     "type": "ESP32-CAM",
-    "last_seen": "2025-04-09T23:45:46.064332",
-    "status": "online"
+    "last_seen": "2025-04-10T07:36:55.022634",
+    "status": "online",
+    "motion_detection": false
   }
 ]

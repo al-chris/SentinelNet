@@ -1,0 +1,6 @@
+{
+  "continuous_recording": true,
+  "motion_detection": true,
+  "recording_segment_minutes": 5,
+  "jpeg_snapshot_interval": 60
+}
