@@ -1,0 +1,42 @@
+[
+  {
+    "device_id": "device-m8z3hn4jvjn1ou",
+    "alias": null,
+    "type": "camera",
+    "last_seen": "2025-04-01T23:54:25.134809",
+    "status": "online",
+    "motion_detection": false
+  },
+  {
+    "device_id": "device-m8z4fm0fxg3oeu",
+    "alias": null,
+    "type": "camera",
+    "last_seen": "2025-04-02T00:20:49.358204",
+    "status": "online",
+    "motion_detection": false
+  },
+  {
+    "device_id": "device-m8z4jhqjx31cka",
+    "alias": null,
+    "type": "camera",
+    "last_seen": "2025-04-02T00:23:42.932219",
+    "status": "online",
+    "motion_detection": false
+  },
+  {
+    "device_id": "MAKZFSH79Y5V",
+    "alias": null,
+    "type": "ESP32-CAM",
+    "last_seen": "2025-04-10T16:35:41.340114",
+    "status": "online",
+    "motion_detection": true
+  },
+  {
+    "device_id": "camera1",
+    "alias": null,
+    "type": "ESP32-CAM",
+    "last_seen": "2025-04-11T06:37:59.968687",
+    "status": "online",
+    "motion_detection": true
+  }
+]

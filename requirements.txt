@@ -1,5 +1,6 @@
-fastapi
-uvicorn 
-opencv-python
-python-multipart
-cryptography
+fastapi==0.115.6
+uvicorn==0.34.0 
+opencv-python==4.10.0.84
+python-multipart==0.0.20
+cryptography==44.0.0
+pytest==8.3.4
