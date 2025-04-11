@@ -42,7 +42,7 @@ class MotionConfig(BaseModel):
     motion_threshold: float = 0.01
     buffer_seconds: float = 3.0
     min_recording_time: float = 5.0
-    fps: int = 15
+    fps: int = 5
 
 class SecuritySystemConfig(BaseModel):
     continuous_recording: bool = True
@@ -229,7 +229,8 @@ class SecuritySystem:
                 # Create video writer
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 self.video_writers[device_id] = cv2.VideoWriter(
-                    video_path, fourcc, 15.0, (width, height)
+                    # video_path, fourcc, 15.0, (width, height) # This is where you can change the fps
+                    video_path, fourcc, 3, (width, height)
                 )
                 
                 self.last_video_time[device_id] = current_video_time
@@ -262,10 +263,10 @@ class SecuritySystem:
             
             self.frame_counters[device_id] += 1
             
-            if self.frame_counters[device_id] % self.config.jpeg_snapshot_interval == 0:
-                jpg_filename = now.strftime("%H-%M-%S") + ".jpg"
-                jpg_path = device_dir / jpg_filename
-                cv2.imwrite(str(jpg_path), frame)
+            # if self.frame_counters[device_id] % self.config.jpeg_snapshot_interval == 0:
+            #     jpg_filename = now.strftime("%H-%M-%S") + ".jpg"
+            #     jpg_path = device_dir / jpg_filename
+            #     cv2.imwrite(str(jpg_path), frame)
                 
         except Exception as e:
             logging.error(f"Error in continuous recording: {str(e)}")

@@ -29,6 +29,14 @@
     "type": "ESP32-CAM",
     "last_seen": "2025-04-10T16:35:41.340114",
     "status": "online",
-    "motion_detection": false
+    "motion_detection": true
+  },
+  {
+    "device_id": "camera1",
+    "alias": null,
+    "type": "ESP32-CAM",
+    "last_seen": "2025-04-11T06:37:59.968687",
+    "status": "online",
+    "motion_detection": true
   }
 ]

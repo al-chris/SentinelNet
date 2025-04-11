@@ -18,7 +18,7 @@ class MotionDetector:
         pixel_threshold: int = 30,
         motion_threshold: float = 0.01,
         buffer_seconds: float = 3.0,
-        fps: int = 15,
+        fps: int = 3,
         save_dir: str = "motion_captures",
         min_recording_time: float = 5.0,
         config_path: str = "system_config.json"
@@ -251,6 +251,10 @@ class MotionDetector:
             return
             
         video_path = os.path.join(self.save_dir, f"motion_{timestamp}.mp4")
+    
+        # Make sure directory exists
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
+        print(f"Writing motion clip to: {video_path}")
         
         # Get frame dimensions
         h, w = frames[0].shape[:2]
@@ -372,7 +376,7 @@ def create_motion_detector(
     pixel_threshold: int = 30,
     motion_threshold: float = 0.01,
     buffer_seconds: float = 3.0,
-    fps: int = 15,
+    fps: int = 3, # Frames per second
     save_dir: str = "motion_captures",
     min_recording_time: float = 5.0,
     config_path: str = "system_config.json"
