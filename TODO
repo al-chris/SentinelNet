@@ -1,3 +1,4 @@
 [ ] Add schematics to repo and setup instructions
 [ ] Online/Offline state management
 [ ] Improve UI - try converting multipart/form-data stream to JPEG stream if multipart/form-data stream is still not handled properly
+[ ] Optimize the Ethernet sketch (sketch.ino)

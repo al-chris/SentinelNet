@@ -16,6 +16,11 @@ const char* password = "s99(630L";
 #define SERVER_IP "192.168.137.1" // Server IP
 const int serverPort = 80;
 
+// Adjustable constants for motion detection configuration
+const float MIN_RECORDING_TIME = 5.0; // Minimum recording time in seconds
+const float BUFFER_SECONDS = 3.0;     // Buffer seconds before/after motion
+const int FPS = 5;                   // Frames per second
+
 // Device identification
 String deviceId = "MAKZFSH79Y5V";  // Using the existing ID to maintain continuity
 
@@ -43,8 +48,9 @@ unsigned long lastCaptureTime = 0;
 unsigned long lastConnectionAttempt = 0;
 int consecutiveFailures = 0;
 #define MAX_FAILURES 3
-#define FRAME_INTERVAL 1000  // 1 second between frames
+#define FRAME_INTERVAL 45  // 45 ms between frame capture
 #define RESET_INTERVAL 10000  // Full reset every 10 seconds if problems persist
+#define SEND_INTERVAL 50 // Send every 50 ms
 
 bool setupCamera() {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector
@@ -79,13 +85,13 @@ bool setupCamera() {
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
     
-    config.xclk_freq_hz = 16000000;  // 16MHz
+    config.xclk_freq_hz = 20000000;  // 20MHz
     config.pixel_format = PIXFORMAT_JPEG;
     
     // Use lowest reasonable resolution
-    config.frame_size = FRAMESIZE_UXGA;  // 1600x1200
+    config.frame_size = FRAMESIZE_VGA;  // 1600x1200
     config.jpeg_quality = 8;            // 0-63 lower number means higher quality
-    config.fb_count = 1;                 // Minimum frame buffers
+    config.fb_count = 2;                 // Minimum frame buffers
     
     // Initialize camera
     esp_err_t err = esp_camera_init(&config);
@@ -97,7 +103,7 @@ bool setupCamera() {
     // Further reduce camera settings to minimum
     sensor_t * s = esp_camera_sensor_get();
     if (s) {
-        s->set_framesize(s, FRAMESIZE_HD);  // Make sure it's at lowest usable resolution
+        s->set_framesize(s, FRAMESIZE_VGA);  // Make sure it's at lowest usable resolution
     }
     
     Serial.println("Camera initialized with minimum settings");
@@ -135,22 +141,52 @@ void registerDevice() {
     WiFiClient regClient;
     
     if (regClient.connect(SERVER_IP, serverPort)) {
-        String data = "{\"device_id\":\"" + deviceId + "\",\"type\":\"ESP32-CAM\"}";
+        // Register the device
+        String regData = "{\"device_id\":\"" + deviceId + "\",\"type\":\"ESP32-CAM\"}";
 
         regClient.println("POST /register_device HTTP/1.1");
         regClient.println("Host: 192.168.1.100");
         regClient.println("Content-Type: application/json");
         regClient.print("Content-Length: ");
-        regClient.println(data.length());
+        regClient.println(regData.length());
         regClient.println("Connection: close");
         regClient.println();
-        regClient.println(data);
+        regClient.println(regData);
 
         // Wait briefly for response but don't hang
         delay(500);
         
         regClient.stop();
         Serial.println("Device registration attempt complete");
+
+        // Enable motion detection
+        WiFiClient motionClient;
+        if (motionClient.connect(SERVER_IP, serverPort)) {
+            String motionData = 
+                "{\"enabled\":true,"
+                "\"pixel_threshold\":30,"
+                "\"motion_threshold\":0.01,"
+                "\"buffer_seconds\":" + String(BUFFER_SECONDS, 1) + ","
+                "\"min_recording_time\":" + String(MIN_RECORDING_TIME, 1) + ","
+                "\"fps\":" + String(FPS) + "}";
+
+            motionClient.println("POST /device/" + deviceId + "/motion HTTP/1.1");
+            motionClient.println("Host: 192.168.1.100");
+            motionClient.println("Content-Type: application/json");
+            motionClient.print("Content-Length: ");
+            motionClient.println(motionData.length());
+            motionClient.println("Connection: close");
+            motionClient.println();
+            motionClient.println(motionData);
+
+            // Wait briefly for response but don't hang
+            delay(500);
+            
+            motionClient.stop();
+            Serial.println("Motion detection configuration attempt complete");
+        } else {
+            Serial.println("Failed to connect for motion detection configuration");
+        }
     } else {
         Serial.println("Failed to connect for device registration");
     }
@@ -202,7 +238,7 @@ bool captureAndSendFrame() {
     }
     
     // Attempt to send the frame only if we're not too close to the last attempt
-    if (currentTime - lastConnectionAttempt > 1000) {
+    if (currentTime - lastConnectionAttempt > SEND_INTERVAL) {
         lastConnectionAttempt = currentTime;
         
         // Use a WiFi client for the image upload
@@ -233,7 +269,8 @@ bool captureAndSendFrame() {
             imgClient.print(header);
             
             // Send image data in small chunks with timeouts
-            const int chunkSize = 512;
+            // const int chunkSize = 1024;
+            const int chunkSize = 40960; // 40KB
             size_t bytesSent = 0;
             unsigned long lastProgressTime = millis();
             
@@ -384,5 +421,5 @@ void loop() {
     }
     
     // Main loop delay - keep this relatively long to avoid overwhelming the system
-    delay(120);
+    delay(10);
 }
