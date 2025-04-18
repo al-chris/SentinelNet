@@ -82,6 +82,11 @@ Access the camera stream in a web browser or HTML page:
 ```html
 <img src="http://localhost:8000/stream/camera1" alt="Camera Stream">
 ```
+
+#### Sequence Diagram
+
+![Sequence Diagram](Sequence_diagram.png)
+
 ## Hardware Setup
 
 Follow these steps to set up the hardware and connect your ESP32-CAM security camera to your PC:
@@ -129,6 +134,13 @@ Follow these steps to set up the hardware and connect your ESP32-CAM security ca
    - Connect to your PC's Wi-Fi hotspot
    - Connect to the server using the provided IP address
    - Start operating as part of the SentinelNet system
+
+### 5. Schematic Diagram
+
+Below is a schematic diagram for the hardware connections.  
+Make sure to connect the ESP32-CAM board as shown:
+
+![Schematic Diagram](schematics.png)
 
 **You're all set!**  
 Your ESP32-CAM device should now be communicating over your PC's hotspot and streaming to the server.
