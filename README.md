@@ -82,6 +82,59 @@ Access the camera stream in a web browser or HTML page:
 ```html
 <img src="http://localhost:8000/stream/camera1" alt="Camera Stream">
 ```
+## Hardware Setup
+
+Follow these steps to set up the hardware and connect your ESP32-CAM security camera to your PC:
+
+### 1. Set Up a Wi-Fi Hotspot on Your PC
+
+1. Open your computer's **Settings**.
+2. Search for "**hotspot**" and navigate to the Mobile Hotspot settings.
+3. Turn the hotspot **ON**.  
+   *Note: You may need to already be connected to a Wi-Fi network for the hotspot function to work properly.*
+
+4. Note the **SSID** (network name) and **password** for the hotspot—you'll need these in the next step.
+
+### 2. Find Your PC's Hotspot IP Address
+
+1. Open the **Command Prompt** (`cmd`).
+2. Type the following command and press Enter:
+   ```
+   ipconfig
+   ```
+3. Look for the section labeled as your hotspot network under "Wireless LAN adapter Local Area Connection*".  
+   Find the **IPv4 Address**—this will be your server IP.
+
+### 3. Configure the Arduino Sketch (`wifi_sketch.ino`)
+
+1. Open `wifi_sketch.ino` in the Arduino IDE.
+2. Locate the lines for the Wi-Fi credentials and server configuration:
+   ```cpp
+   const char* ssid =  "your_hotspot_ssid"
+   const char* password "your_hotspot_password"
+   #define SERVER_IP "your_server_ip"
+   String deviceId = "your_device_id"
+   ```
+3. Replace:
+   - `your_hotspot_ssid` with your laptop hotspot's SSID  
+   - `your_hotspot_password` with your hotspot password  
+   - `your_server_ip` with the IPv4 address you found in the previous step  
+   - Optionally, change `your_device_id` to a unique name for this device (optional)
+
+### 4. Upload the Sketch to the ESP32-CAM
+
+1. Connect your ESP32-CAM board to your PC.
+2. Upload the modified `wifi_sketch.ino` to the board.
+3. Once uploaded, the ESP32-CAM should automatically:
+   - Connect to your PC's Wi-Fi hotspot
+   - Connect to the server using the provided IP address
+   - Start operating as part of the SentinelNet system
+
+**You're all set!**  
+Your ESP32-CAM device should now be communicating over your PC's hotspot and streaming to the server.
+
+---
+*For troubleshooting, ensure your firewall allows incoming connections to the server port and that your ESP32-CAM is powered properly.*
 
 ## Integrating Motion Detection
 
@@ -98,9 +151,12 @@ The system can be extended with motion detection capabilities by integrating the
 SentinelNet/
 ├── app/
 │   ├── __init__.py
-│   └── main.py
+│   ├── main.py
+│   └── motion_detector.py
 ├── tests/
 ├── requirements.txt
+├── sketch.ino
+├── wifi_sketch.ino
 ├── LICENSE
 └── README.md
 ```

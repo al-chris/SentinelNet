@@ -9,11 +9,11 @@
 #include "soc/rtc_cntl_reg.h"  //disable brownout problems
 
 // WiFi network credentials
-const char* ssid = "DESKTOP-J7H5805 8266";
-const char* password = "s99(630L";
+const char* ssid = "your_hotspot_ssid";
+const char* password = "your_hotspot_password";
 
 // Network configuration
-#define SERVER_IP "192.168.137.1" // Server IP
+#define SERVER_IP "your_server_ip" // Server IP
 const int serverPort = 80;
 
 // Adjustable constants for motion detection configuration
@@ -22,7 +22,7 @@ const float BUFFER_SECONDS = 3.0;     // Buffer seconds before/after motion
 const int FPS = 5;                   // Frames per second
 
 // Device identification
-String deviceId = "MAKZFSH79Y5V";  // Using the existing ID to maintain continuity
+String deviceId = "your_device_id";  // Using the existing ID to maintain continuity
 
 // AI Thinker ESP32-CAM pins
 #define PWDN_GPIO_NUM     32

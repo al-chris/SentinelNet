@@ -27,7 +27,7 @@
     "device_id": "MAKZFSH79Y5V",
     "alias": null,
     "type": "ESP32-CAM",
-    "last_seen": "2025-04-10T16:35:41.340114",
+    "last_seen": "2025-04-11T11:14:13.829731",
     "status": "online",
     "motion_detection": true
   },
@@ -35,7 +35,7 @@
     "device_id": "camera1",
     "alias": null,
     "type": "ESP32-CAM",
-    "last_seen": "2025-04-11T06:37:59.968687",
+    "last_seen": "2025-04-13T04:53:07.696502",
     "status": "online",
     "motion_detection": true
   }
