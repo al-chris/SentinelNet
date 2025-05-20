@@ -1,5 +1,8 @@
 # SentinelNet
 
+![SentinelNet Logo](docs/images/logo.svg)
+
+
 An Ethernet-based Security Camera System built with FastAPI and OpenCV + ESP32-CAM
 
 ## Overview
@@ -85,7 +88,7 @@ Access the camera stream in a web browser or HTML page:
 
 #### Sequence Diagram
 
-![Sequence Diagram](Sequence_diagram.png)
+![Sequence Diagram](docs/images/Sequence_diagram.png)
 
 ## Hardware Setup
 
@@ -140,7 +143,7 @@ Follow these steps to set up the hardware and connect your ESP32-CAM security ca
 Below is a schematic diagram for the hardware connections.  
 Make sure to connect the ESP32-CAM board as shown:
 
-![Schematic Diagram](schematics.png)
+![Schematic Diagram](docs/images/schematics.png)
 
 **You're all set!**  
 Your ESP32-CAM device should now be communicating over your PC's hotspot and streaming to the server.
