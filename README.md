@@ -1,13 +1,8 @@
 # SentinelNet
 
-<<<<<<< HEAD
 ![SentinelNet Logo](docs/images/logo.svg)
 
-
 An Ethernet-based Security Camera System built with FastAPI and OpenCV + ESP32-CAM
-=======
-**Ethernet-Based Security Camera System with FastAPI, OpenCV, and ESP32-CAM**
->>>>>>> 9515ae535d0f975471eda8da0719408f7dd51d5d
 
 ---
 
