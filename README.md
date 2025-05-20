@@ -1,62 +1,73 @@
 # SentinelNet
 
+<<<<<<< HEAD
 ![SentinelNet Logo](docs/images/logo.svg)
 
 
 An Ethernet-based Security Camera System built with FastAPI and OpenCV + ESP32-CAM
+=======
+**Ethernet-Based Security Camera System with FastAPI, OpenCV, and ESP32-CAM**
+>>>>>>> 9515ae535d0f975471eda8da0719408f7dd51d5d
 
-## Overview
+---
 
-SentinelNet is a lightweight, scalable security camera system that enables multiple camera devices to stream video over an Ethernet network. This system provides a centralized platform for receiving, processing, and viewing security camera feeds with intelligent motion detection capabilities.
+## 🚀 Overview
 
-## Features
+SentinelNet is a lightweight, scalable security camera platform that allows multiple IP camera devices (such as ESP32-CAM) to stream video over an Ethernet or Wi-Fi network. It provides a centralized server for receiving, processing, and viewing camera feeds with optional intelligent motion detection.
 
-- **Multi-Device Support**: Connect and manage multiple IP cameras simultaneously
-- **Real-time Video Streaming**: View live camera feeds through a web interface
-- **Frame Processing**: Process incoming video frames with custom analysis logic
-- **Device Management**: Easily list and track connected camera devices
-- **Motion Detection Integration**: Compatible with the `MotionDetector` class to add intelligent motion-based recording
-- **RESTful API**: Well-documented API endpoints for integration with other systems
+---
 
-## Installation
+## 🛠️ Features
+
+- **Multi-Device Support**: Connect and manage multiple cameras simultaneously.
+- **Real-Time Video Streaming**: View live feeds via a web interface.
+- **Custom Frame Processing**: Analyze incoming video frames with pluggable logic.
+- **Easy Device Management**: List and track all connected camera devices.
+- **Motion Detection**: Integrate the `MotionDetector` class for smart, event-driven recording.
+- **RESTful API**: Well-documented endpoints for easy integration.
+
+---
+
+## ⚡ Quickstart
 
 ### Prerequisites
 
 - Python 3.7+
-- pip (Python package installer)
+- `pip` (Python package manager)
 
-### Setup
+### Installation
 
-1. Clone the repository:
+1. **Clone the Repository**
    ```bash
    git clone https://github.com/al-chris/SentinelNet.git
    cd SentinelNet
    ```
 
-2. Install dependencies:
+2. **Install Dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the application:
+3. **Run the Server**
    ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn app.main:app --host 0.0.0.0 --port 80 --reload
    ```
+   The server will be available at [http://localhost:80](http://localhost:80)
 
-## API Documentation
+---
+
+## 📚 API Usage
 
 ### Endpoints
 
-- `GET /`: Home endpoint that returns a welcome message
-- `POST /upload/{device_id}`: Upload a video frame from a camera device
-- `GET /stream/{device_id}`: Stream video from a specific device
-- `GET /list_devices`: List all connected camera devices
+| Endpoint                | Method | Description                           |
+|-------------------------|--------|---------------------------------------|
+| `/`                     | GET    | Home endpoint (welcome message)       |
+| `/upload/{device_id}`   | POST   | Upload a video frame from a camera    |
+| `/stream/{device_id}`   | GET    | Stream video from a specific device   |
+| `/list_devices`         | GET    | List all connected camera devices     |
 
-### Example Usage
-
-#### Sending Camera Frames
-
-To send a frame from a camera device:
+### Example: Sending Camera Frames
 
 ```python
 import requests
@@ -67,100 +78,92 @@ cap = cv2.VideoCapture(0)
 ret, frame = cap.read()
 cap.release()
 
-# Encode the frame as JPEG
+# Encode frame as JPEG
 _, img_encoded = cv2.imencode('.jpg', frame)
 
-# Send to the server
 device_id = 'camera1'
 files = {'file': ('image.jpg', img_encoded.tobytes(), 'image/jpeg')}
 response = requests.post(f'http://localhost:8000/upload/{device_id}', files=files)
-
 print(response.json())
 ```
 
-#### Viewing Camera Streams
+### Example: Viewing Camera Streams
 
-Access the camera stream in a web browser or HTML page:
-
+Paste this in your browser or HTML page:
 ```html
 <img src="http://localhost:8000/stream/camera1" alt="Camera Stream">
 ```
 
-#### Sequence Diagram
+---
+
+### 🗂️ Sequence Diagram
 
 ![Sequence Diagram](docs/images/Sequence_diagram.png)
 
-## Hardware Setup
+---
 
-Follow these steps to set up the hardware and connect your ESP32-CAM security camera to your PC:
+## 🔌 Hardware Setup (ESP32-CAM)
 
-### 1. Set Up a Wi-Fi Hotspot on Your PC
+Follow these steps to connect your ESP32-CAM device:
 
-1. Open your computer's **Settings**.
-2. Search for "**hotspot**" and navigate to the Mobile Hotspot settings.
-3. Turn the hotspot **ON**.  
-   *Note: You may need to already be connected to a Wi-Fi network for the hotspot function to work properly.*
+### 1. Enable Wi-Fi Hotspot on Your PC
 
-4. Note the **SSID** (network name) and **password** for the hotspot—you'll need these in the next step.
+- Open **Settings** > Search for "**hotspot**" > Turn Mobile Hotspot **ON**.
+- Note the **SSID** and **password**.
 
-### 2. Find Your PC's Hotspot IP Address
+### 2. Find Your Hotspot IP
 
-1. Open the **Command Prompt** (`cmd`).
-2. Type the following command and press Enter:
-   ```
-   ipconfig
-   ```
-3. Look for the section labeled as your hotspot network under "Wireless LAN adapter Local Area Connection*".  
-   Find the **IPv4 Address**—this will be your server IP.
+- Open Command Prompt (`cmd`).
+- Run: `ipconfig`
+- Find the **IPv4 Address** under "Wireless LAN adapter Local Area Connection*".
 
-### 3. Configure the Arduino Sketch (`wifi_sketch.ino`)
+### 3. Configure Arduino Sketch
 
-1. Open `wifi_sketch.ino` in the Arduino IDE.
-2. Locate the lines for the Wi-Fi credentials and server configuration:
-   ```cpp
-   const char* ssid =  "your_hotspot_ssid"
-   const char* password "your_hotspot_password"
-   #define SERVER_IP "your_server_ip"
-   String deviceId = "your_device_id"
-   ```
-3. Replace:
-   - `your_hotspot_ssid` with your laptop hotspot's SSID  
-   - `your_hotspot_password` with your hotspot password  
-   - `your_server_ip` with the IPv4 address you found in the previous step  
-   - Optionally, change `your_device_id` to a unique name for this device (optional)
+Open `wifi_sketch.ino` in the Arduino IDE and update:
 
-### 4. Upload the Sketch to the ESP32-CAM
+```cpp
+const char* ssid =  "your_hotspot_ssid";
+const char* password = "your_hotspot_password";
+#define SERVER_IP "your_server_ip"
+String deviceId = "your_device_id";
+```
 
-1. Connect your ESP32-CAM board to your PC.
-2. Upload the modified `wifi_sketch.ino` to the board.
-3. Once uploaded, the ESP32-CAM should automatically:
-   - Connect to your PC's Wi-Fi hotspot
-   - Connect to the server using the provided IP address
-   - Start operating as part of the SentinelNet system
+- Replace placeholders with your actual values.
+
+### 4. Upload to ESP32-CAM
+
+- Connect ESP32-CAM to PC.
+- Upload `wifi_sketch.ino`.
+- The device should connect to your hotspot and stream to the server.
 
 ### 5. Schematic Diagram
 
+<<<<<<< HEAD
 Below is a schematic diagram for the hardware connections.  
 Make sure to connect the ESP32-CAM board as shown:
 
 ![Schematic Diagram](docs/images/schematics.png)
+=======
+![Schematic Diagram](schematics.png)
+>>>>>>> 9515ae535d0f975471eda8da0719408f7dd51d5d
 
-**You're all set!**  
-Your ESP32-CAM device should now be communicating over your PC's hotspot and streaming to the server.
+**Tip:** Ensure your firewall allows incoming connections on the server port. Power the ESP32-CAM with a stable supply.
 
 ---
-*For troubleshooting, ensure your firewall allows incoming connections to the server port and that your ESP32-CAM is powered properly.*
 
-## Integrating Motion Detection
+## 🎯 Extending with Motion Detection
 
-The system can be extended with motion detection capabilities by integrating the `MotionDetector` class, which provides:
+Integrate the `MotionDetector` class for advanced motion-based recording:
 
-- Background subtraction for accurate motion detection
-- Intelligent recording that only captures relevant events
-- Configurable motion sensitivity and recording parameters
-- Buffer recording before and after motion events
+- Automatic background subtraction
+- Event-driven recording (only important moments)
+- Configurable sensitivity and buffer windows
 
-## Project Structure
+See `app/motion_detector.py` for usage.
+
+---
+
+## 🗂️ Project Structure
 
 ```
 SentinelNet/
@@ -176,32 +179,53 @@ SentinelNet/
 └── README.md
 ```
 
-## Dependencies
+---
 
-- fastapi - Web framework for building APIs
-- uvicorn - ASGI server implementation
-- opencv-python - Computer vision library for image processing
-- python-multipart - Support for parsing multipart form data
-- cryptography - Cryptography library for secure connections
+## 📦 Dependencies
 
-## License
+- **fastapi** – API framework
+- **uvicorn** – ASGI server
+- **opencv-python** – Image processing
+- **python-multipart** – Multipart form support
+- **cryptography** – Secure connections
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Install them all with:
+```bash
+pip install -r requirements.txt
+```
 
-## Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 📄 License
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+MIT License – See [LICENSE](LICENSE) for details.
 
-## Future Enhancements
+---
 
-- User authentication and device authorization
-<!-- - Video recording and storage management -->
-- Motion detection configuration through web interface
-- Email/SMS notifications on detected events
-- Mobile application for remote monitoring
+## 🤝 Contributing
+
+Contributions welcome! To submit a feature or bugfix:
+
+1. **Fork** the repo
+2. **Create a branch**: `git checkout -b feature/your-feature`
+3. **Commit** your changes: `git commit -m 'Add feature'`
+4. **Push** your branch: `git push origin feature/your-feature`
+5. **Open a Pull Request**
+
+---
+
+## 🌟 Future Enhancements
+
+- User authentication & device authorization
+- Web-based motion detection configuration
+- Email/SMS alerts on detected events
+- Mobile app for remote viewing
+
+---
+
+**Need help?**  
+- Check firewall settings if devices can't connect.
+- Power and reset ESP32-CAM if not detected.
+- For more, open an [Issue](https://github.com/al-chris/SentinelNet/issues).
+
+---
